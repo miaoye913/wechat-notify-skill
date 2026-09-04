@@ -1,0 +1,8 @@
+# 密钥与本地配置，绝不提交
+token.txt
+*.token
+*.secret
+
+# 系统/编辑器杂项
+.DS_Store
+Thumbs.db
