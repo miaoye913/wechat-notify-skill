@@ -1,19 +1,42 @@
-# 项目规则（AGENTS.md）
-
-## 微信完成通知（WeChat Notify）
+# 微信完成通知规则（WeChat Notify）
 
 当用户要求「任务/对话/项目跑完后用微信通知我」（或等价说法）时，agent 必须遵守：
+
+## 执行要求
 
 1. 在任务**收尾时**（无论成功还是失败都必须执行）运行：
    ```
    python "D:/deepseek_harness/wechat-push/wxnotify.py" "<结果摘要>" -t "<任务名>"
    ```
-2. 结果摘要包含：任务名、成功/失败、关键结果或错误摘要（简短）
-3. 若命令非零退出（ClawBot 超过 24 小时/10 次未对话会下发失败），用服务号兜底重试：
+2. 结果摘要须包含：任务名、成功/失败、关键结果或错误摘要（简短，一两句话）
+3. 若命令非零退出（例如 ClawBot 因超过 24 小时/10 次未对话导致下发失败），
+   用服务号兜底渠道重试一次：
    ```
    python "D:/deepseek_harness/wechat-push/wxnotify.py" "<结果摘要>" -t "<任务名>" -c wechat
    ```
-4. 若环境提供 MCP 工具 `send_wechat_message`，可直接调用（等价）
-5. 只在完成/失败时通知一次，不要每个中间步骤都发
+4. 若环境中存在 MCP 工具 `send_wechat_message`（微信通知 MCP），也可直接调用它，效果等价
+5. 不要每个中间步骤都通知；只在任务完成或失败时通知一次
 
-工具详情见 `D:\deepseek_harness\wechat-push\README.md`（token 已配置，无需用户提供）。
+## 工具说明（供 agent 参考，无需用户再提供任何配置）
+
+- 路径：`D:\deepseek_harness\wechat-push\wxnotify.py`
+- 参数：第一个位置参数 = 消息内容（必填）；`-t/--title` 标题；`-c/--channel` 渠道
+- 默认渠道 clawbot（微信 ClawBot 对话，形态最好）；`-c wechat` 走「推送加」服务号（无保活限制的兜底）
+- token 已配置在同目录 `token.txt`，不需要用户提供；不要输出/展示 token 内容
+- 返回 `OK: 服务端已接收` 即成功（code=200，异步投递，以手机收到为准）
+
+## 双通道问答（向用户提问时可选增强）
+
+需要向用户提问、且用户可能不在电脑前（或用手机更方便）时：
+
+1. 先把**问题本身推送到微信**（否则用户微信里看不到问题）：
+   `python "D:/deepseek_harness/wechat-push/wxnotify.py" "<问题+选项>" -t "提问"`
+2. 再启动**纯代码监听**（不做 AI 处理，只检测微信回复）：
+   `python "D:/deepseek_harness/wechat-push/wxlisten.py" --wait --timeout 30`（后台运行）
+3. 告知用户：可直接回复，也可去微信 ClawBot 回复
+4. 两个结束条件，满足即停：
+   - 用户在前端回复 → 主动结束监听进程
+   - 用户在微信回复 → 监听检测到消息**自动退出**（exit 0），消息已落盘 `inbox/`，读取最新一条作为用户回答
+5. 处理完后如有必要，用 wxnotify.py 把结果回发微信
+
+注意：`wxlisten.py` 需要 PushPlus 开放接口密钥（同目录 `gate.env`，已配置好）；`getMsg` 是拉取即消费队列，拉到即落盘。

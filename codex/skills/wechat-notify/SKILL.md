@@ -28,3 +28,19 @@ description: 给用户微信发通知消息（任务完成/失败/提醒）。�
 - 第一个位置参数 = 消息内容（必填）；`-t/--title` 标题；`-c/--channel` 渠道（默认 clawbot，`wechat` 为兜底）
 - token 已配置在同目录 `token.txt`；不要输出/展示 token
 - 返回 `OK: 服务端已接收` 即成功（code=200，异步投递，以手机微信收到为准）
+
+## 双通道问答（向用户提问时可选增强）
+
+需要向用户提问、且用户可能不在电脑前（或用手机更方便）时：
+
+1. 先把**问题本身推送到微信**（否则用户微信里看不到问题）：
+   `python "D:/deepseek_harness/wechat-push/wxnotify.py" "<问题+选项>" -t "提问"`
+2. 再启动**纯代码监听**（不做 AI 处理，只检测微信回复）：
+   `python "D:/deepseek_harness/wechat-push/wxlisten.py" --wait --timeout 30`（后台运行）
+3. 告知用户：可直接回复，也可去微信 ClawBot 回复
+4. 两个结束条件，满足即停：
+   - 用户在前端回复 → 主动结束监听进程
+   - 用户在微信回复 → 监听检测到消息**自动退出**（exit 0），消息已落盘 `inbox/`，读取最新一条作为用户回答
+5. 处理完后如有必要，用 wxnotify.py 把结果回发微信
+
+注意：`wxlisten.py` 需要 PushPlus 开放接口密钥（同目录 `gate.env`，已配置好）；`getMsg` 是拉取即消费队列，拉到即落盘。
