@@ -1,8 +1,13 @@
-# wechat-notify-skill — AI 环境「微信完成通知」技能（集中版）
+# wechat-notify-skill — AI 环境「微信通知 + 双通道问答」部署包
 
-一套「**任务 / 对话 / 项目跑完 → 微信通知我**」的通用能力，按各家 AI 客户端的约定整理成可分发副本，支持 **DSH、Copilot、Codex、Claude Code** 等环境，未来迁移到新机器或分享给其他账号直接照做即可。
+一套开箱即用的能力，让你电脑上的任何 AI（**DSH / Codex / Copilot / Claude Code** 等）可以：
 
-> 核心思路：内容同一套（源模板 `agent-rules.md`），按各客户端"只认自家门口"的规则**投递**到对应位置。不是重复维护，是分发。
+- 📲 **任务完成/失败时给你发微信通知**（默认微信 ClawBot 对话，失败自动切「推送加」服务号兜底）
+- 💬 **双通道问答**：AI 提问时把问题推送到微信并挂监听，你用微信回复或前端回复均可
+- 🧪 **测试例程**：说一句"运行测试例程"，自动端到端自检整条链路
+- 🔌 **MCP 工具**：`send_wechat_message`，注册后 AI 直接调用
+
+纯云端推送（PushPlus），**不碰个人微信自动化灰区、无封号风险**；监听脚本纯代码、等待零 AI token 消耗。
 
 ---
 
@@ -10,127 +15,111 @@
 
 ```
 wechat-notify-skill/
-├── README.md                        ← 本文件（介绍 + 用法）
-├── agent-rules.md                   ← 规则源模板（想改行为，改这里）
-├── claude/
-│   └── CLAUDE.md                    ← 部署到 Claude Code 全局：~/.claude/CLAUDE.md
-├── copilot/
-│   └── copilot-instructions.md      ← 部署到 GitHub Copilot 全局：~/.github/copilot-instructions.md
-├── codex/
-│   ├── AGENTS.md                    ← 部署到 Codex 全局：~/.codex/AGENTS.md
-│   └── skills/wechat-notify/
-│       └── SKILL.md                 ← 部署到 Codex 技能目录：~/.codex/skills/wechat-notify/SKILL.md
-├── dsh/
-│   └── AGENTS.md                    ← 部署到 DSH 项目根（工作区指令，DSH 自动注入）：<项目根>/AGENTS.md
-└── tool/
-    ├── wxnotify.py                  ← 发送工具（Python 标准库，零依赖，真正的执行者）
-    └── wxnotify_mcp.py              ← MCP Server（stdio，零依赖，暴露 send_wechat_message 工具）
+├── README.md                 ← 本文件（通用部署指南）
+├── install.py                ← 跨平台安装器（Windows/macOS/Linux，Python 3.8+）
+├── templates/                ← 规则模板（{{TOOL_DIR}} 占位符由 install.py 替换为实际路径）
+│   ├── agent-rules.md.tpl    ←   通用规则（Codex AGENTS / Copilot / Claude / DSH 共用）
+│   ├── skill-wechat-notify.md.tpl  ← Codex 技能版（带 frontmatter）
+│   └── gate.env.example      ←   开放接口密钥配置示例
+└── tool/                     ← 工具（零依赖，Python 标准库）
+    ├── wxnotify.py           ←   发送：AI/脚本 → 微信
+    ├── wxlisten.py           ←   接收：微信 → 本机（--wait/--once/--status）
+    ├── wxtest.py             ←   测试例程：端到端自检 + 微信回环
+    └── wxnotify_mcp.py       ←   MCP Server（可选，暴露 send_wechat_message）
 ```
 
-## 各环境部署位置速查
+## 前置要求（首次约 15 分钟）
 
-| 环境 | 放哪个文件 | 目标位置（Windows） | 生效时机 |
-|---|---|---|---|
-| DSH | `dsh/AGENTS.md` | 项目根目录 `AGENTS.md`（DSH 自动注入会话指令） | 新会话 |
-| Codex | `codex/AGENTS.md` | `C:\Users\<你>\.codex\AGENTS.md` | 新会话 |
-| Codex | `codex/skills/wechat-notify/SKILL.md` | `C:\Users\<你>\.codex\skills\wechat-notify\SKILL.md` | 新会话 |
-| Copilot | `copilot/copilot-instructions.md` | `C:\Users\<你>\.github\copilot-instructions.md` | 新会话 |
-| Claude Code | `claude/CLAUDE.md` | `C:\Users\<你>\.claude\CLAUDE.md` | 新会话 |
-| MCP 工具 | `tool/wxnotify_mcp.py` | 任意稳定路径，注册进各客户端（见下） | 配置后 |
+1. **Python 3.8+**（`python --version` 确认）
+2. **微信手机版**：有新版本内置的 **ClawBot 插件**入口则体验最佳（我→设置→插件，灰度功能）；
+   没有也能用（走服务号形态）
+3. **PushPlus 账号**：手机微信扫码关注公众号「推送加」+ 完成**实名认证**（小额第三方核验费，不实名不能发送）
 
-## 快速开始（首次配置，约 10 分钟）
+## 快速开始（新电脑部署）
 
-### 1. 准备 PushPlus token（一次性）
-1. 手机微信扫码关注公众号「**推送加**」，完成**实名认证**（不实名无法发送）
-2. 打开 https://www.pushplus.plus 微信登录 → 个人中心 → 新建一个「消息 token」
-3. （可选，推荐）渠道配置 → 微信 ClawBot → 扫码绑定激活，通知形态更好
-4. 把 token 存为 `tool/token.txt`（**该文件已被 .gitignore 排除，绝不会上传**）
+### 1. 获取仓库并安装
 
-### 2. 部署规则文件
-把上表左边文件复制到右边位置即可（注意目录是否存在，`.github`、`.claude` 等可能需要新建）。Codex 的 MCP 注册（可选）：
-
-```toml
-# 追加到 C:\Users\<你>\.codex\config.toml
-[mcp_servers.wechat_notify]
-command = "python"
-args = ["D:/<你的路径>/wechat-notify-skill/tool/wxnotify_mcp.py"]
+```bash
+git clone https://github.com/miaoye913/wechat-notify-skill.git
+cd wechat-notify-skill
+# 就地部署（工具留在本仓库 tool/，规则指向它）：
+python install.py
 ```
 
-VSCode 项目级（`.vscode/mcp.json`）：
+如果你想把工具放在别的目录运行（比如跟项目放一起），装的时候指过去：
+`python install.py --tool-dir D:/my-tools/wechat-push`
+规则文件里的所有命令路径会自动指向该目录。想让 **DSH/项目级**也生效，加 `--project-dir <项目根目录>`。
 
-```json
-{
-  "servers": {
-    "wechat-notify": {
-      "command": "python",
-      "args": ["D:/<你的路径>/wechat-notify-skill/tool/wxnotify_mcp.py"]
-    }
-  }
-}
+> 可先 `python install.py --dry-run` 预览将要写入的位置。
+> 安装目标：`~/.codex/AGENTS.md`、`~/.codex/skills/wechat-notify/SKILL.md`、
+> `~/.github/copilot-instructions.md`、`~/.claude/CLAUDE.md`、可选 `<project>/AGENTS.md`。
+
+### 2. 配置密钥
+
+```bash
+# 方式一（推荐，避免手滑）：安装时直接传入
+python install.py --token 你的用户token --secret 你的secretKey
+
+# 方式二：手动编辑 install.py 生成的模板
+#   <工具目录>/gate.env   ← PUSHPLUS_USER_TOKEN / PUSHPLUS_SECRET_KEY
+#   <工具目录>/token.txt  ← 用户 token（一行）
 ```
 
-### 3. 验证
+密钥获取：pushplus.plus → 个人中心（用户 token）；**开发设置**（自己设置 ≥32 位 secretKey，
+并把本机**公网 IP** 加入安全 IP 列表——家庭宽带 IP 变化后需回来更新；`wxtest.py` 可帮你确认）。
 
-```powershell
-# 只检查请求内容，不发
-python tool/wxnotify.py "测试" --dry-run
-# 真发一条到手机微信（默认 ClawBot 对话）
-python tool/wxnotify.py "链路测试成功" -t "测试"
-# MCP server 协议自测（不发消息）
-python tool/wxnotify_mcp.py --selftest
+### 3. 绑定 ClawBot 渠道（可选但推荐）
+
+pushplus 个人中心 → 渠道配置 → 微信 ClawBot → 立即绑定 → 微信扫码 → 在微信里给 ClawBot 发条消息 → 点「我已发送」→ 状态"已激活"。
+
+### 4. 跑测试例程验证
+
+```bash
+python tool/wxtest.py
 ```
 
-## 双通道问答：提问 ↔ 微信监听（v1.1 新增）
+看到 `6 PASS / 0 FAIL` 即全部打通（最后一步会请你在微信回复 ok 完成回环验证）。
+**注意**：如需用 `wxlisten.py`（接收），需完成第 2 步的开放接口配置。
 
-AI 提问时，可以同时挂一个**纯代码监听**（不做 AI 处理）等待你在微信里的回复：
+### 5. 开始使用
 
-- `tool/wxlisten.py --wait` —— **等待模式**（AI 提问期间挂后台）：每 10s 拉一次微信 ClawBot 消息，检测到新消息自动退出（exit 0）；`--timeout N` 分钟超时（exit 2）
-- `tool/wxlisten.py --once` —— 按需拉取一次并存 `inbox/`
-- `tool/wxlisten.py --status` —— 自检密钥/绑定
+各 AI 客户端**开新会话**后，直接说：
 
-结束条件（二选一，满足即停）：① 用户在前端回答了选项（由 AI 主动结束监听）② 用户在微信 ClawBot 里回复了（监听检测到消息自动退出，消息落盘 `inbox/`）。
-
-**注意**：`getMsg` 是"拉取即消费"队列——每条消息只返回一次，拉到务必落盘；AI 提问时应把**问题本身也推送到微信**（用 `wxnotify.py`），否则用户在微信里看不到问题。
-
-运行前提：PushPlus 开放接口（个人中心→开发设置配置 secretKey + 安全 IP），密钥放 `gate.env`（**该文件含密钥，不要入库**）：
-
-```env
-PUSHPLUS_USER_TOKEN=你的用户token
-PUSHPLUS_SECRET_KEY=你的secretKey
-```
+- 「这个任务跑完用微信通知我」→ 自动推送
+- 「运行测试例程」→ 端到端自检
+- 提问时 AI 会按规则把问题推送到微信并挂监听，你**在微信里回复即可**（前端回复也行）
 
 ## 日常用法
 
-- **对话触发**（所有已部署环境通用）：对 AI 说「**这个任务跑完用微信通知我**」（等价说法均可），agent 会在任务收尾时（成功或失败）自动推送
-- **命令行**：
-
-```powershell
-python tool/wxnotify.py "构建通过，耗时 3 分钟" -t "任务名"      # 默认 ClawBot 渠道
-python tool/wxnotify.py "内容" -t "标题" -c wechat              # 服务号兜底（无保活限制）
-```
-
-- **MCP 工具**：`send_wechat_message(content, title?, channel?)`
+| 场景 | 做法 |
+|---|---|
+| 对话触发 | 对任意已部署环境的 AI 说「任务跑完微信通知我」（成败都会报） |
+| 命令行 | `python tool/wxnotify.py "内容" -t "标题"`（默认 ClawBot）；`-c wechat` 服务号兜底 |
+| 拉取微信消息 | `python tool/wxlisten.py --once`；挂监听等回复 `--wait --timeout 30` |
+| MCP 工具 | 注册 `tool/wxnotify_mcp.py` 后调用 `send_wechat_message(content, title?, channel?)` |
+| 自检 | `python tool/wxtest.py` |
 
 ## 渠道与限制
 
-| 渠道 | 参数 | 形态 | 限制 |
-|---|---|---|---|
-| ClawBot（默认） | `-c clawbot` | 微信 ClawBot 对话，体验最好 | 每下发 10 次或每 24 小时需在微信里主动与 ClawBot 说句话，否则发不出 |
-| 推送加服务号 | `-c wechat` | 服务号会话（可置顶） | 无保活限制，适合兜底 |
+- **ClawBot 渠道**（默认）：形态最好；微信限制**每下发 10 次或每 24 小时**需用户主动对话一次，否则发不出 → 规则已内置失败自动切服务号兜底
+- **服务号渠道**（`-c wechat`）：无保活限制，适合兜底
+- **等待监听零 AI token**：轮询纯代码，只有处理时才调 AI
 
-规则文件内置了"失败自动换 `-c wechat` 重试"的兜底逻辑。
+## 常见问题
 
-## 安全备注
+- **收不到消息？** 检查：公众号消息开关、微信侧"通知消息管理"、官网"最新请求"页报文；或运行 `wxtest.py`
+- **安全 IP 403？** 家庭宽带公网 IP 变了，去 pushplus 开发设置更新白名单
+- **Codex/Copilot 没反应？** 规则在新会话加载；确认 install.py 写入成功（看输出的路径）
+- **想给别的微信发？** 设计上只发给"你自己"（你的 PushPlus 账号），避免打扰他人与风险
+- **ClawBot 渠道绑定失败？** 一个微信只能绑一个 ClawBot；确认手机有插件入口（灰度）
 
-- `token.txt` 已 gitignore；token 是微信通知的钥匙，只存本机，别提交、别发给第三方
-- 规则文件本身不含任何密钥，可放心公开/分享
+## 开发维护
 
-## 维护
+- **改规则措辞/行为**：改 `templates/*.md.tpl`（占位符 `{{TOOL_DIR}}` 别删）→ 重跑 `python install.py --tool-dir ...` 同步各端
+- **改工具逻辑**：改 `tool/*.py` → 同步到你的运行实例（若分离）→ 跑 `wxtest.py` 回归
+- 密钥文件（`gate.env`/`token.txt`）已被 `.gitignore` 排除，永不入库
 
-- 想改规则措辞/行为：改 **`agent-rules.md`** 源模板，再同步到 `claude/` `copilot/` `codex/` `dsh/` 各副本（内容一致）
-- 想改发送逻辑：改 `tool/wxnotify.py`（MCP 与 CLI 共用同一套发送逻辑，由 `tool/wxnotify_mcp.py` 调用）
+## 版本
 
-## 相关链接
-
-- PushPlus 消息接口文档：https://www.pushplus.plus/doc/guide/api.html
-- PushPlus 官方 MCP Server：https://github.com/pushplus/pushplus-MCP-Server-TypeScript（需 Node ≥18；本仓库 `tool/wxnotify_mcp.py` 为零依赖替代）
+- v1.x：固定路径的分发副本（作者本机布局），v2.0.0 起改为模板 + 安装器，可在任意电脑部署
+- 完整历史见 GitHub Releases

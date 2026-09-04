@@ -2,6 +2,13 @@
 token.txt
 *.token
 *.secret
+gate.env
+*.env
+
+# 收件箱与运行痕迹
+inbox/
+__pycache__/
+*.pyc
 
 # 系统/编辑器杂项
 .DS_Store
