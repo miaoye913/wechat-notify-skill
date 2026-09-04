@@ -44,3 +44,11 @@ description: 给用户微信发通知消息（任务完成/失败/提醒）。�
 5. 处理完后如有必要，用 wxnotify.py 把结果回发微信
 
 注意：`wxlisten.py` 需要 PushPlus 开放接口密钥（同目录 `gate.env`，已配置好）；`getMsg` 是拉取即消费队列，拉到即落盘。
+
+## 测试例程（用户说「运行测试例程 / 测试一下微信通知能不能用」时执行）
+
+1. 运行端到端自检：
+   `python "D:/deepseek_harness/wechat-push/wxtest.py"`
+2. 它会自动完成四步：① 配置检查（token.txt / gate.env）② PushPlus 连通性与 ClawBot 绑定 ③ 发一条测试消息到微信（失败自动换服务号兜底）④ 等用户微信回复 ok（默认 90 秒，可 `--timeout N`）
+3. 把 PASS/FAIL 汇总报告给用户；有 FAIL 项按输出线索排查（密钥、安全 IP、绑定、24h 保活）
+4. 测试会真发一条微信消息，属预期行为；不要在用户不知情时运行
