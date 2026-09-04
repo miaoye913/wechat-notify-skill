@@ -96,6 +96,8 @@ def main():
     code = resp.get("code")
     if code == 200:
         print(f"OK: 服务端已接收 (msg={resp.get('msg')})，请留意手机微信是否收到")
+        if resp.get("data"):
+            print(f"    流水号 shortCode={resp.get('data')}（可用开放接口查投递状态）")
         return 0
     hint = CODE_HINTS.get(code, "")
     sys.stderr.write(f"FAIL: code={code} msg={resp.get('msg')} {hint}\n".rstrip())

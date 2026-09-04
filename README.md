@@ -80,6 +80,25 @@ python tool/wxnotify.py "链路测试成功" -t "测试"
 python tool/wxnotify_mcp.py --selftest
 ```
 
+## 双通道问答：提问 ↔ 微信监听（v1.1 新增）
+
+AI 提问时，可以同时挂一个**纯代码监听**（不做 AI 处理）等待你在微信里的回复：
+
+- `tool/wxlisten.py --wait` —— **等待模式**（AI 提问期间挂后台）：每 10s 拉一次微信 ClawBot 消息，检测到新消息自动退出（exit 0）；`--timeout N` 分钟超时（exit 2）
+- `tool/wxlisten.py --once` —— 按需拉取一次并存 `inbox/`
+- `tool/wxlisten.py --status` —— 自检密钥/绑定
+
+结束条件（二选一，满足即停）：① 用户在前端回答了选项（由 AI 主动结束监听）② 用户在微信 ClawBot 里回复了（监听检测到消息自动退出，消息落盘 `inbox/`）。
+
+**注意**：`getMsg` 是"拉取即消费"队列——每条消息只返回一次，拉到务必落盘；AI 提问时应把**问题本身也推送到微信**（用 `wxnotify.py`），否则用户在微信里看不到问题。
+
+运行前提：PushPlus 开放接口（个人中心→开发设置配置 secretKey + 安全 IP），密钥放 `gate.env`（**该文件含密钥，不要入库**）：
+
+```env
+PUSHPLUS_USER_TOKEN=你的用户token
+PUSHPLUS_SECRET_KEY=你的secretKey
+```
+
 ## 日常用法
 
 - **对话触发**（所有已部署环境通用）：对 AI 说「**这个任务跑完用微信通知我**」（等价说法均可），agent 会在任务收尾时（成功或失败）自动推送
