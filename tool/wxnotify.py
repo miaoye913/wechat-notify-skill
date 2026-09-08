@@ -13,7 +13,7 @@
 token 解析顺序: --token 参数 > 环境变量 PUSHPLUS_TOKEN > 同目录 token.txt
 渠道说明: -c/--channel 默认 clawbot（微信 ClawBot 对话）;
           微信限制: 每下发 10 次或每 24 小时需在微信里主动与 ClawBot 对话一次，否则消息下不来；
-          需要无保活限制的兜底通道时用 -c wechat（推送加服务号）。
+          此时脚本会自动切换到 wechat（推送加服务号，无保活限制）重试一次。
 
 说明: 接口返回 code=200 只代表服务端已接收（异步处理），最终以手机微信实际收到为准。
       退出码: 0 成功 / 1 发送失败 / 2 缺少 token
@@ -70,30 +70,43 @@ def main():
         )
         return 2
 
-    payload = {"token": token, "title": a.title, "content": a.content, "channel": a.channel}
-    if a.channel == "clawbot":
-        payload["template"] = "txt"  # ClawBot 渠道建议 txt 模板，正文完整展示
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-
     if a.dry_run:
+        dry = {"token": token, "title": a.title, "content": a.content, "channel": a.channel}
+        if a.channel == "clawbot":
+            dry["template"] = "txt"
         print(f"[DryRun] POST {ENDPOINT}")
-        print(f"  body = {body.decode('utf-8')}")
+        print(f"  body = {json.dumps(dry, ensure_ascii=False)}")
         return 0
 
-    req = urllib.request.Request(
-        ENDPOINT, data=body, headers={"Content-Type": "application/json; charset=utf-8"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            resp = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        sys.stderr.write(f"HTTP 错误: {e.code} {e.reason}\n")
-        return 1
-    except Exception as e:  # 网络/TLS/超时等
-        sys.stderr.write(f"请求异常: {e}\n")
-        return 1
+    def do_send(channel):
+        payload = {"token": token, "title": a.title, "content": a.content, "channel": channel}
+        if channel == "clawbot":
+            payload["template"] = "txt"  # ClawBot 渠道建议 txt 模板，正文完整展示
+        req = urllib.request.Request(
+            ENDPOINT,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return {"code": e.code, "msg": e.reason}
+        except Exception as e:  # 网络/TLS/超时等
+            return {"code": -1, "msg": str(e)}
 
+    resp = do_send(a.channel)
     code = resp.get("code")
+
+    # 自动兜底：ClawBot 因 24h/10 次未主动对话等失败时，切服务号重发一次（无保活限制）
+    if code != 200 and a.channel == "clawbot":
+        sys.stderr.write(
+            f"clawbot 渠道失败 (code={code} msg={resp.get('msg')})，"
+            "疑似超过 24h/10 次未主动对话——自动切换服务号渠道(wechat)重试一次\n"
+        )
+        resp = do_send("wechat")
+        code = resp.get("code")
+
     if code == 200:
         print(f"OK: 服务端已接收 (msg={resp.get('msg')})，请留意手机微信是否收到")
         if resp.get("data"):
