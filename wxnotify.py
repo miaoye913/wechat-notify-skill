@@ -59,6 +59,7 @@ def main():
         help="发送渠道，默认 clawbot（微信 ClawBot）；wechat=推送加服务号（无保活限制的兜底）",
     )
     ap.add_argument("--token", default=None, help="PushPlus token")
+    ap.add_argument("--tag", default=None, help="消息前缀标签（如 通知/对话），用于区分消息类型")
     ap.add_argument("--dry-run", action="store_true", help="只打印请求内容，不发送")
     a = ap.parse_args()
 
@@ -70,8 +71,10 @@ def main():
         )
         return 2
 
+    content = f"[{a.tag}] {a.content}" if a.tag else a.content
+
     if a.dry_run:
-        dry = {"token": token, "title": a.title, "content": a.content, "channel": a.channel}
+        dry = {"token": token, "title": a.title, "content": content, "channel": a.channel}
         if a.channel == "clawbot":
             dry["template"] = "txt"
         print(f"[DryRun] POST {ENDPOINT}")
@@ -79,7 +82,7 @@ def main():
         return 0
 
     def do_send(channel):
-        payload = {"token": token, "title": a.title, "content": a.content, "channel": channel}
+        payload = {"token": token, "title": a.title, "content": content, "channel": channel}
         if channel == "clawbot":
             payload["template"] = "txt"  # ClawBot 渠道建议 txt 模板，正文完整展示
         req = urllib.request.Request(

@@ -46,6 +46,19 @@ python install.py --project-dir <你的项目目录>   # 部署规则到 Codex/C
 python wxtest.py                                  # 端到端自检（会真发一条微信，按提示回复 ok）
 ```
 
+## 三种模式怎么选（先判别再执行）
+
+| 用户意图 | 模式 | 做法 | 监听 |
+|---|---|---|---|
+| 「跑完通知我」 | ① 通知 | `wxnotify.py "<摘要>" --tag 通知`（ClawBot，失败自动切服务号） | 不需要 |
+| 「问我，等我答」 | ② 单次问答 | `wxnotify.py` 提问 + `wxlisten.py --wait --timeout 300` | 一次性 |
+| 「聊会儿 / 开启对话模式」 | ③ 对话 | `wxlisten.py --listen` + 循环 `wxchat.py --wait-new` | 常驻 |
+
+口诀：**单向发=通知；要等你一句=`--wait`；多轮来回=`--listen`+chat 循环**。
+状态查询：`wxchat.py --status`（监听是否在跑 / 未读数 / 模式提示）。
+消息加 `--tag 通知` 或 `--tag 对话`，用户一眼分清。
+微信特性：ClawBot 24h/10 条保活窗口在对话中会被你的发言自动续上；`getMsg` 拉取即消费，但未监听时消息滞留在 PushPlus 不会丢。
+
 ## 日常用法
 
 | 场景 | 命令 |

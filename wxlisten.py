@@ -19,12 +19,24 @@ wxlisten.py — 微信消息「按需拉取」工具（你 → AI 方向）
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 import urllib.error
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 INBOX = os.path.join(BASE, "inbox")
+HEARTBEAT = os.path.join(INBOX, ".listener.heartbeat")
+
+
+def touch_heartbeat():
+    """刷新监听心跳，供 wxchat.py --status 判断常驻监听是否在运行"""
+    os.makedirs(INBOX, exist_ok=True)
+    try:
+        with open(HEARTBEAT, "w", encoding="utf-8") as f:
+            f.write(f"{os.getpid()} {time.time()}")
+    except Exception:
+        pass
 API = "https://www.pushplus.plus"
 
 DEFAULTS = {
@@ -117,6 +129,7 @@ def save_inbox(text, mtype):
 
 
 def pull_once(verbose=True):
+    touch_heartbeat()
     # getMsg 为"拉取即消费"队列：每条消息只返回一次，直接全部落盘即可
     msgs, err = fetch_msgs()
     if err:
@@ -186,6 +199,14 @@ if __name__ == "__main__":
             time.sleep(poll)
     elif "--listen" in args:
         print("常驻监听启动（Ctrl+C 退出）", flush=True)
+        touch_heartbeat()
+
+        def _heartbeat_loop():
+            while True:
+                time.sleep(30)
+                touch_heartbeat()
+
+        threading.Thread(target=_heartbeat_loop, daemon=True).start()
         while True:
             try:
                 pull_once(verbose=False)
